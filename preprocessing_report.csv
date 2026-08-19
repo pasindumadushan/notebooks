@@ -1,0 +1,27 @@
+file_path,output_path,status,flipped,resized,illumination_corrected,contrast_enhanced,normalized
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\0\0a38b552372d-600.jpg,C:\Private\Private proj\DiabeticRetinopathy\processed\test\0\0a38b552372d-600.jpg,PROCESSED,True,True,True,False,True
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\0\0fc6829da85b-600.jpg,,SKIPPED_BLURRY,,,,,
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\0\42017_left-600.jpg,C:\Private\Private proj\DiabeticRetinopathy\processed\test\0\42017_left-600.jpg,PROCESSED,False,False,True,False,True
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\0\42426_left-600.jpg,,SKIPPED_BLURRY,,,,,
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\0\42645_left-600.jpg,,SKIPPED_BLURRY,,,,,
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\0\5_right-600.jpg,,SKIPPED_BLURRY,,,,,
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\1\114_left-600-FSF.jpg,,SKIPPED_BLURRY,,,,,
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\1\6091_left-600-CF.jpg,C:\Private\Private proj\DiabeticRetinopathy\processed\test\1\6091_left-600-CF.jpg,PROCESSED,True,False,True,False,True
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\1\6b00cb764237-600-RB.jpg,,SKIPPED_BLURRY,,,,,
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\1\722_right-600-RB.jpg,C:\Private\Private proj\DiabeticRetinopathy\processed\test\1\722_right-600-RB.jpg,PROCESSED,True,False,True,False,True
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\1\84a72e15b23c-600-RB.jpg,C:\Private\Private proj\DiabeticRetinopathy\processed\test\1\84a72e15b23c-600-RB.jpg,PROCESSED,False,False,True,False,True
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\2\0fcfc6301f3d-600.jpg,,SKIPPED_BLURRY,,,,,
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\2\3_left-600.jpg,,SKIPPED_BLURRY,,,,,
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\2\624fb7317106-GF-600.jpg,C:\Private\Private proj\DiabeticRetinopathy\processed\test\2\624fb7317106-GF-600.jpg,PROCESSED,False,False,False,True,True
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\2\8d62ba9cb22a-600.jpg,C:\Private\Private proj\DiabeticRetinopathy\processed\test\2\8d62ba9cb22a-600.jpg,PROCESSED,False,False,True,True,True
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\2\9eaac43744f5-600.jpg,,SKIPPED_BLURRY,,,,,
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\3\39aa3cd93c50-600-FA-HFA.jpg,C:\Private\Private proj\DiabeticRetinopathy\processed\test\3\39aa3cd93c50-600-FA-HFA.jpg,PROCESSED,True,False,True,False,True
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\3\4773_left-600-HB.jpg,C:\Private\Private proj\DiabeticRetinopathy\processed\test\3\4773_left-600-HB.jpg,PROCESSED,False,False,True,True,True
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\3\531_left-600-HB.jpg,C:\Private\Private proj\DiabeticRetinopathy\processed\test\3\531_left-600-HB.jpg,PROCESSED,False,False,True,False,True
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\3\9bafbbd152d2-600-FA-HFA.jpg,C:\Private\Private proj\DiabeticRetinopathy\processed\test\3\9bafbbd152d2-600-FA-HFA.jpg,PROCESSED,False,False,True,True,True
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\3\c31651ea04c6-GF-600-HBF.jpg,C:\Private\Private proj\DiabeticRetinopathy\processed\test\3\c31651ea04c6-GF-600-HBF.jpg,PROCESSED,False,False,False,True,True
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\4\1084_left-600.jpg,C:\Private\Private proj\DiabeticRetinopathy\processed\test\4\1084_left-600.jpg,PROCESSED,False,False,True,False,True
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\4\1fd5d860d4d7-GF-600.jpg,C:\Private\Private proj\DiabeticRetinopathy\processed\test\4\1fd5d860d4d7-GF-600.jpg,PROCESSED,False,False,False,True,True
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\4\4a7dc013e802-600-FS.jpg,C:\Private\Private proj\DiabeticRetinopathy\processed\test\4\4a7dc013e802-600-FS.jpg,PROCESSED,False,False,True,True,True
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\4\60f15dd68d30-600-FS-T.jpg,,SKIPPED_BLURRY,,,,,
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\4\8c7c26c52a6c-600-ALL.jpg,,SKIPPED_BLURRY,,,,,

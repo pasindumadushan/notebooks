@@ -1,0 +1,27 @@
+file_path,class_label,width,height,min_pixel,max_pixel,blur_score,is_blurry,bright_region_x,bright_region_y,bright_region_quadrant,contrast_score,illumination_score,needs_resize,needs_illumination_correction,needs_contrast_enhancement,needs_normalization,recommended_action,error
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\0\0a38b552372d-600.jpg,0,1000.0,1000.0,0.0,255.0,8.05,False,206.0,521.0,Q3,49.63,53.25,True,True,False,True,PROCESS,
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\0\0fc6829da85b-600.jpg,,,,,,,,,,,,,,,,,,cannot unpack non-iterable NoneType object
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\0\42017_left-600.jpg,0,600.0,600.0,0.0,255.0,21.33,False,585.0,322.0,Q4,55.98,49.39,False,True,False,True,PROCESS,
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\0\42426_left-600.jpg,,,,,,,,,,,,,,,,,,cannot unpack non-iterable NoneType object
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\0\42645_left-600.jpg,,,,,,,,,,,,,,,,,,float division by zero
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\0\5_right-600.jpg,,,,,,,,,,,,,,,,,,cannot unpack non-iterable NoneType object
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\1\114_left-600-FSF.jpg,,,,,,,,,,,,,,,,,,cannot unpack non-iterable NoneType object
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\1\6091_left-600-CF.jpg,1,600.0,600.0,0.0,255.0,19.16,False,59.0,291.0,Q1,44.32,37.67,False,True,False,True,PROCESS,
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\1\6b00cb764237-600-RB.jpg,,,,,,,,,,,,,,,,,,cannot unpack non-iterable NoneType object
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\1\722_right-600-RB.jpg,1,600.0,600.0,0.0,255.0,202.57,False,76.0,278.0,Q1,48.17,45.52,False,True,False,True,PROCESS,
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\1\84a72e15b23c-600-RB.jpg,1,600.0,600.0,0.0,255.0,32.53,False,503.0,208.0,Q2,51.52,53.32,False,True,False,True,PROCESS,
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\2\0fcfc6301f3d-600.jpg,,,,,,,,,,,,,,,,,,cannot unpack non-iterable NoneType object
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\2\3_left-600.jpg,,,,,,,,,,,,,,,,,,cannot unpack non-iterable NoneType object
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\2\624fb7317106-GF-600.jpg,2,600.0,600.0,0.0,255.0,122.17,False,528.0,33.0,Q2,15.99,4.63,False,False,True,True,PROCESS,
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\2\8d62ba9cb22a-600.jpg,2,600.0,600.0,0.0,255.0,7.19,False,444.0,251.0,Q2,27.95,29.0,False,True,True,True,PROCESS,
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\2\9eaac43744f5-600.jpg,,,,,,,,,,,,,,,,,,cannot unpack non-iterable NoneType object
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\3\39aa3cd93c50-600-FA-HFA.jpg,3,600.0,600.0,0.0,255.0,58.29,False,289.0,360.0,Q3,52.94,51.88,False,True,False,True,PROCESS,
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\3\4773_left-600-HB.jpg,3,600.0,600.0,0.0,255.0,108.09,False,550.0,95.0,Q2,31.91,31.47,False,True,True,True,PROCESS,
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\3\531_left-600-HB.jpg,3,600.0,600.0,0.0,255.0,12.52,False,402.0,291.0,Q2,47.93,46.4,False,True,False,True,PROCESS,
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\3\9bafbbd152d2-600-FA-HFA.jpg,3,600.0,600.0,0.0,255.0,38.46,False,553.0,361.0,Q4,36.88,40.38,False,True,True,True,PROCESS,
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\3\c31651ea04c6-GF-600-HBF.jpg,3,600.0,600.0,0.0,255.0,49.26,False,334.0,370.0,Q4,9.3,2.93,False,False,True,True,PROCESS,
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\4\1084_left-600.jpg,4,600.0,600.0,0.0,255.0,30.37,False,484.0,243.0,Q2,56.57,54.1,False,True,False,True,PROCESS,
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\4\1fd5d860d4d7-GF-600.jpg,4,600.0,600.0,0.0,255.0,145.64,False,355.0,581.0,Q4,13.87,4.37,False,False,True,True,PROCESS,
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\4\4a7dc013e802-600-FS.jpg,4,600.0,600.0,0.0,255.0,11.6,False,353.0,299.0,Q2,19.69,21.63,False,True,True,True,PROCESS,
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\4\60f15dd68d30-600-FS-T.jpg,,,,,,,,,,,,,,,,,,cannot unpack non-iterable NoneType object
+C:\Private\Private proj\DiabeticRetinopathy\raw - Copy\test\4\8c7c26c52a6c-600-ALL.jpg,,,,,,,,,,,,,,,,,,cannot unpack non-iterable NoneType object
