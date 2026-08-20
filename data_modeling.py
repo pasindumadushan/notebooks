@@ -2,7 +2,7 @@ import os
 import torch
 import torch.nn as nn
 import pandas as pd
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, WeightedRandomSampler
 from torchvision.datasets import ImageFolder
 from torchvision.models import mobilenet_v3_small
 import torchvision.transforms as transforms
@@ -10,34 +10,38 @@ import torchvision.transforms as transforms
 
 def ordinal_severity_loss(outputs, labels, num_classes=5):
     """
-    Ordinal cross-entropy loss that penalizes predictions in proportion
-    to their distance from the true severity level.
-    Predicting severity 4 for a severity-0 image is penalized more
-    than predicting severity 1.
+    Combined loss:
+      - CrossEntropy: strong gradient toward the correct class
+      - Ordinal penalty: penalizes probability mass on classes
+        far from the true severity level
     """
+
+    # Primary signal — drives correct class prediction
+    ce_loss = torch.nn.functional.cross_entropy(outputs, labels)
+
+    # Ordinal penalty — penalizes far-away probability mass
     severity = torch.arange(
         num_classes,
         dtype=torch.float32,
         device=outputs.device
     )
 
-    # distance from true severity to each class: shape (batch, num_classes)
-    labels_f = labels.float().unsqueeze(1)
-    weights  = (severity - labels_f).abs() + 1  # +1 so correct class has weight 1
+    labels_f        = labels.float().unsqueeze(1)
+    distances       = (severity - labels_f).abs()     # shape (batch, num_classes)
 
-    log_probs    = torch.log_softmax(outputs, dim=1)
-    weighted_nll = -(weights * log_probs).sum(dim=1)
+    probs           = torch.softmax(outputs, dim=1)
+    ordinal_penalty = (distances * probs).sum(dim=1).mean()
 
-    return weighted_nll.mean()
+    return ce_loss + ordinal_penalty
 
 
 def data_modeling(
         processed_dir,
-        num_classes=5,
-        epochs=10,
-        batch_size=32,
-        learning_rate=1e-4,
-        img_size=224,
+        num_classes,
+        epochs,
+        batch_size,
+        learning_rate,
+        img_size,
 ):
 
     train_dir = os.path.join(processed_dir, "train")
@@ -60,10 +64,27 @@ def data_modeling(
         transform=transform
     )
 
+    # -----------------------------------------
+    # Balanced sampler (handles class imbalance)
+    # -----------------------------------------
+
+    class_counts  = [0] * num_classes
+    for _, label in train_dataset.samples:
+        class_counts[label] += 1
+
+    class_weights  = [1.0 / c if c > 0 else 0.0 for c in class_counts]
+    sample_weights = [class_weights[label] for _, label in train_dataset.samples]
+
+    sampler = WeightedRandomSampler(
+        weights=sample_weights,
+        num_samples=len(sample_weights),
+        replacement=True
+    )
+
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
-        shuffle=True
+        sampler=sampler
     )
 
     # -----------------------------------------
@@ -158,7 +179,7 @@ def data_modeling(
         )
 
     # -----------------------------------------
-    # Save model & report
+    # Save model & training report
     # -----------------------------------------
 
     model_path = os.path.join(processed_dir, "mobilenetv3_baseline.pth")
@@ -176,4 +197,85 @@ def data_modeling(
     print(f"\nModel Saved   : {model_path}")
     print(f"Report Saved  : modeling_report.csv")
 
-    return report_df
+    # -----------------------------------------
+    # Test Evaluation
+    # -----------------------------------------
+
+    test_dir = os.path.join(processed_dir, "test")
+
+    test_dataset = ImageFolder(
+        root=test_dir,
+        transform=transform
+    )
+
+    test_loader = DataLoader(
+        test_dataset,
+        batch_size=batch_size,
+        shuffle=False
+    )
+
+    model.eval()
+
+    test_loss    = 0.0
+    test_correct = 0
+    test_total   = 0
+
+    # Per-class correct/total for per-class accuracy
+    class_correct = [0] * num_classes
+    class_total   = [0] * num_classes
+
+    with torch.no_grad():
+
+        for images, labels in test_loader:
+
+            images = images.to(device)
+            labels = labels.to(device)
+
+            outputs   = model(images)
+            loss      = criterion(outputs, labels, num_classes)
+
+            test_loss += loss.item() * images.size(0)
+
+            _, predicted = torch.max(outputs, 1)
+
+            test_correct += (predicted == labels).sum().item()
+            test_total   += labels.size(0)
+
+            for label, pred in zip(labels, predicted):
+                class_total[label.item()]   += 1
+                class_correct[label.item()] += (pred == label).item()
+
+    test_loss_avg = test_loss / test_total
+    test_acc      = test_correct / test_total
+
+    print()
+    print("=" * 60)
+    print("TEST RESULTS")
+    print("=" * 60)
+    print(f"\nTest Samples  : {test_total}")
+    print(f"Test Loss     : {test_loss_avg:.4f}")
+    print(f"Test Accuracy : {test_acc:.4f}")
+    print()
+    print("Per-Class Accuracy:")
+    for i in range(num_classes):
+        if class_total[i] > 0:
+            cls_acc = class_correct[i] / class_total[i]
+            print(f"  Severity {i}  : {cls_acc:.4f}  ({class_correct[i]}/{class_total[i]})")
+
+    test_report_df = pd.DataFrame([{
+        "test_loss"    : round(test_loss_avg, 4),
+        "test_accuracy": round(test_acc, 4),
+        **{
+            f"severity_{i}_accuracy": round(
+                class_correct[i] / class_total[i], 4
+            ) if class_total[i] > 0 else None
+            for i in range(num_classes)
+        }
+    }])
+
+    test_report_df.to_csv("test_report.csv", index=False)
+
+    print()
+    print(f"Test Report   : test_report.csv")
+
+    return report_df, test_report_df

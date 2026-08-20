@@ -235,6 +235,18 @@ def preprocess_dataset(
         blur_threshold
 ):
 
+    # -----------------------------------------
+    # Clear processed directory before starting
+    # -----------------------------------------
+
+    if os.path.exists(processed_dir):
+
+        import shutil
+
+        shutil.rmtree(processed_dir)
+
+    os.makedirs(processed_dir)
+
     df = pd.read_csv(input_csv)
 
     log_records = []

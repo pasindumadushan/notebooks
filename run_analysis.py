@@ -1,6 +1,6 @@
 from analyze_dataset import analyze_dataset
-# from pre_processing import preprocess_dataset
-# from data_modeling import data_modeling
+from pre_processing import preprocess_dataset
+from data_modeling import data_modeling
 
 csv_path = "dataset_analysis.csv"
 raw_dir = r"C:\Private\Private proj\DiabeticRetinopathy\raw - Copy"
@@ -15,14 +15,19 @@ analyze_dataset (
     illumination_threshold=15.0,
 )
 
-# preprocess_dataset(
-#     input_csv = csv_path,
-#     raw_dir=raw_dir,
-#     processed_dir=processed_dir,
-#     target_size=(600, 600),
-#     blur_threshold=5,
-# )
+preprocess_dataset(
+    input_csv = csv_path,
+    raw_dir=raw_dir,
+    processed_dir=processed_dir,
+    target_size=(600, 600),
+    blur_threshold=5,
+)
 
-# data_modeling(
-#     processed_dir=processed_dir,
-# )
+data_modeling(
+    processed_dir=processed_dir,
+    num_classes=5,
+    epochs=10,
+    batch_size=32,
+    learning_rate=1e-4,
+    img_size=224,
+)
