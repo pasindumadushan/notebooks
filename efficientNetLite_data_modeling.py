@@ -4,7 +4,7 @@ import torch.nn as nn
 import pandas as pd
 from torch.utils.data import DataLoader, WeightedRandomSampler
 from torchvision.datasets import ImageFolder
-from torchvision.models import mobilenet_v3_small
+from torchvision.models import efficientnet_b0
 import torchvision.transforms as transforms
 
 
@@ -35,7 +35,7 @@ def ordinal_severity_loss(outputs, labels, num_classes=5):
     return ce_loss + ordinal_penalty
 
 
-def data_modeling(
+def efficientnet_lite_data_modeling(
         processed_dir,
         num_classes,
         epochs,
@@ -50,7 +50,24 @@ def data_modeling(
     # Dataset
     # -----------------------------------------
 
-    transform = transforms.Compose([
+    # Augmented transform for training — increases effective dataset size
+    train_transform = transforms.Compose([
+        transforms.Resize((img_size, img_size)),
+        transforms.RandomRotation(15),
+        transforms.ColorJitter(
+            brightness=0.2,
+            contrast=0.2,
+            saturation=0.1
+        ),
+        transforms.ToTensor(),
+        transforms.Normalize(
+            mean=[0.485, 0.456, 0.406],
+            std=[0.229, 0.224, 0.225]
+        )
+    ])
+
+    # Clean transform for test — no augmentation
+    eval_transform = transforms.Compose([
         transforms.Resize((img_size, img_size)),
         transforms.ToTensor(),
         transforms.Normalize(
@@ -59,9 +76,10 @@ def data_modeling(
         )
     ])
 
-    train_dataset = ImageFolder(
-        root=train_dir,
-        transform=transform
+    train_dataset = ImageFolder(root=train_dir, transform=train_transform)
+    val_dataset   = ImageFolder(
+        root=os.path.join(processed_dir, "val"),
+        transform=eval_transform
     )
 
     # -----------------------------------------
@@ -87,11 +105,17 @@ def data_modeling(
         sampler=sampler
     )
 
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=batch_size,
+        shuffle=False
+    )
+
     # -----------------------------------------
-    # Model: MobileNetV3 Small (baseline)
+    # Model: EfficientNet-B0 (lightweight baseline)
     # -----------------------------------------
 
-    model = mobilenet_v3_small(weights="DEFAULT")
+    model = efficientnet_b0(weights="DEFAULT")
 
     model.classifier[-1] = nn.Linear(
         model.classifier[-1].in_features,
@@ -115,22 +139,32 @@ def data_modeling(
         lr=learning_rate
     )
 
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer,
+        T_max=epochs
+    )
+
     # -----------------------------------------
     # Training
     # -----------------------------------------
 
     print("=" * 60)
-    print("TRAINING: MobileNetV3 Small Baseline")
+    print("TRAINING: EfficientNet-B0 Lite Baseline")
     print("=" * 60)
     print(f"\nDevice        : {device}")
     print(f"Train Samples : {len(train_dataset)}")
+    print(f"Val Samples   : {len(val_dataset)}")
     print(f"Classes       : {train_dataset.classes}")
     print(f"Epochs        : {epochs}")
     print(f"Batch Size    : {batch_size}")
     print(f"Learning Rate : {learning_rate}")
     print()
 
-    log_records = []
+    log_records      = []
+    best_val_loss    = float("inf")
+    best_model_state = None
+    patience         = 5
+    patience_counter = 0
 
     for epoch in range(1, epochs + 1):
 
@@ -166,36 +200,84 @@ def data_modeling(
         epoch_loss = running_loss / total
         epoch_acc  = correct / total
 
+        # -----------------------------------------
+        # Validation
+        # -----------------------------------------
+
+        model.eval()
+
+        val_loss    = 0.0
+        val_correct = 0
+        val_total   = 0
+
+        with torch.no_grad():
+            for images, labels in val_loader:
+                images  = images.to(device)
+                labels  = labels.to(device)
+                outputs = model(images)
+                loss    = criterion(outputs, labels, num_classes)
+                val_loss    += loss.item() * images.size(0)
+                _, predicted = torch.max(outputs, 1)
+                val_correct += (predicted == labels).sum().item()
+                val_total   += labels.size(0)
+
+        val_loss_avg = val_loss / val_total
+        val_acc      = val_correct / val_total
+
         log_records.append({
-            "epoch"   : epoch,
-            "loss"    : round(epoch_loss, 4),
-            "accuracy": round(epoch_acc, 4),
+            "epoch"       : epoch,
+            "loss"        : round(epoch_loss, 4),
+            "accuracy"    : round(epoch_acc, 4),
+            "val_loss"    : round(val_loss_avg, 4),
+            "val_accuracy": round(val_acc, 4),
         })
+
+        scheduler.step()
+
+        current_lr = scheduler.get_last_lr()[0]
 
         print(
             f"Epoch [{epoch:>3}/{epochs}]"
             f"  Loss: {epoch_loss:.4f}"
-            f"  Accuracy: {epoch_acc:.4f}"
+            f"  Acc: {epoch_acc:.4f}"
+            f"  Val Loss: {val_loss_avg:.4f}"
+            f"  Val Acc: {val_acc:.4f}"
+            f"  LR: {current_lr:.2e}"
         )
+
+        # Save best model; stop early if val loss stops improving
+        if val_loss_avg < best_val_loss:
+            best_val_loss    = val_loss_avg
+            best_model_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
+            patience_counter = 0
+        else:
+            patience_counter += 1
+            if patience_counter >= patience:
+                print(f"\nEarly stopping at epoch {epoch} (no val improvement for {patience} epochs)")
+                break
 
     # -----------------------------------------
     # Save model & training report
     # -----------------------------------------
 
-    model_path = os.path.join(processed_dir, "mobilenetv3_baseline.pth")
+    model_path = os.path.join(processed_dir, "efficientnet_lite_baseline.pth")
+
+    # Restore best weights (lowest val loss) before saving and testing
+    if best_model_state is not None:
+        model.load_state_dict({k: v.to(device) for k, v in best_model_state.items()})
 
     torch.save(model.state_dict(), model_path)
 
     report_df = pd.DataFrame(log_records)
 
-    report_df.to_csv("modeling_report.csv", index=False)
+    report_df.to_csv("efficientnet_lite_modeling_report.csv", index=False)
 
     print()
     print("=" * 60)
     print("TRAINING COMPLETE")
     print("=" * 60)
     print(f"\nModel Saved   : {model_path}")
-    print(f"Report Saved  : modeling_report.csv")
+    print(f"Report Saved  : efficientnet_lite_modeling_report.csv")
 
     # -----------------------------------------
     # Test Evaluation
@@ -205,7 +287,7 @@ def data_modeling(
 
     test_dataset = ImageFolder(
         root=test_dir,
-        transform=transform
+        transform=eval_transform
     )
 
     test_loader = DataLoader(
@@ -273,9 +355,9 @@ def data_modeling(
         }
     }])
 
-    test_report_df.to_csv("test_report.csv", index=False)
+    test_report_df.to_csv("efficientnet_lite_test_report.csv", index=False)
 
     print()
-    print(f"Test Report   : test_report.csv")
+    print(f"Test Report   : efficientnet_lite_test_report.csv")
 
     return report_df, test_report_df

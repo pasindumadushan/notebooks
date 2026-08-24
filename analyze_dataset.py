@@ -14,9 +14,11 @@ def detect_bright_region(image_path):
         cv2.COLOR_BGR2GRAY
     )
 
+    threshold = np.percentile(gray, 99)
+
     _, thresh = cv2.threshold(
         gray,
-        220,
+        threshold,
         255,
         cv2.THRESH_BINARY
     )
@@ -36,6 +38,9 @@ def detect_bright_region(image_path):
     )
 
     M = cv2.moments(largest)
+
+    if M["m00"] == 0:
+        return None
 
     cx = int(M["m10"] / M["m00"])
     cy = int(M["m01"] / M["m00"])
@@ -191,11 +196,12 @@ def analyze_dataset(
                     )
 
                     # Bright region
-                    bright_x, bright_y, bright_quadrant = (
-                        detect_bright_region(
-                            img_path
-                        )
-                    )
+                    bright_result = detect_bright_region(img_path)
+
+                    if bright_result is not None:
+                        bright_x, bright_y, bright_quadrant = bright_result
+                    else:
+                        bright_x, bright_y, bright_quadrant = None, None, None
 
                     # Resize check
                     is_resized = (
