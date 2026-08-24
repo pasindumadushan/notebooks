@@ -44,7 +44,9 @@ def efficientnet_lite_data_modeling(
         img_size,
 ):
 
-    train_dir = os.path.join(processed_dir, "train")
+    train_dir   = os.path.join(processed_dir, "train")
+    reports_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reports")
+    os.makedirs(reports_dir, exist_ok=True)
 
     # -----------------------------------------
     # Dataset
@@ -136,7 +138,8 @@ def efficientnet_lite_data_modeling(
 
     optimizer = torch.optim.Adam(
         model.parameters(),
-        lr=learning_rate
+        lr=learning_rate,
+        weight_decay=1e-3
     )
 
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
@@ -270,14 +273,14 @@ def efficientnet_lite_data_modeling(
 
     report_df = pd.DataFrame(log_records)
 
-    report_df.to_csv("efficientnet_lite_modeling_report.csv", index=False)
+    report_df.to_csv(os.path.join(reports_dir, "efficientnet_lite_modeling_report.csv"), index=False)
 
     print()
     print("=" * 60)
     print("TRAINING COMPLETE")
     print("=" * 60)
     print(f"\nModel Saved   : {model_path}")
-    print(f"Report Saved  : efficientnet_lite_modeling_report.csv")
+    print(f"Report Saved  : {os.path.join(reports_dir, 'efficientnet_lite_modeling_report.csv')}")
 
     # -----------------------------------------
     # Test Evaluation
@@ -355,9 +358,9 @@ def efficientnet_lite_data_modeling(
         }
     }])
 
-    test_report_df.to_csv("efficientnet_lite_test_report.csv", index=False)
+    test_report_df.to_csv(os.path.join(reports_dir, "efficientnet_lite_test_report.csv"), index=False)
 
     print()
-    print(f"Test Report   : efficientnet_lite_test_report.csv")
+    print(f"Test Report   : {os.path.join(reports_dir, 'efficientnet_lite_test_report.csv')}")
 
     return report_df, test_report_df

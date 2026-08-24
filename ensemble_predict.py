@@ -50,6 +50,9 @@ def ensemble_evaluate(
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+    reports_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reports")
+    os.makedirs(reports_dir, exist_ok=True)
+
     mobilenet_path    = os.path.join(processed_dir, "mobilenetv3_baseline.pth")
     efficientnet_path = os.path.join(processed_dir, "efficientnet_lite_baseline.pth")
 
@@ -159,10 +162,10 @@ def ensemble_evaluate(
     }]
 
     report_df = pd.DataFrame(report)
-    report_df.to_csv("ensemble_test_report.csv", index=False)
+    report_df.to_csv(os.path.join(reports_dir, "ensemble_test_report.csv"), index=False)
 
     print()
-    print(f"Report Saved     : ensemble_test_report.csv")
+    print(f"Report Saved     : {os.path.join(reports_dir, 'ensemble_test_report.csv')}")
 
     return report_df
 

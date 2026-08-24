@@ -1,10 +1,11 @@
 import os
 import torch
 import torch.nn as nn
+import torch.nn.utils.prune as prune
 import pandas as pd
 from torch.utils.data import DataLoader, WeightedRandomSampler
 from torchvision.datasets import ImageFolder
-from torchvision.models import mobilenet_v3_large
+from torchvision.models import mobilenet_v3_small
 import torchvision.transforms as transforms
 
 
@@ -16,10 +17,8 @@ def ordinal_severity_loss(outputs, labels, num_classes=5):
         far from the true severity level
     """
 
-    # Primary signal — drives correct class prediction
-    ce_loss = torch.nn.functional.cross_entropy(outputs, labels)
+    ce_loss  = torch.nn.functional.cross_entropy(outputs, labels)
 
-    # Ordinal penalty — penalizes far-away probability mass
     severity = torch.arange(
         num_classes,
         dtype=torch.float32,
@@ -27,22 +26,42 @@ def ordinal_severity_loss(outputs, labels, num_classes=5):
     )
 
     labels_f        = labels.float().unsqueeze(1)
-    distances       = (severity - labels_f).abs()     # shape (batch, num_classes)
-
+    distances       = (severity - labels_f).abs()
     probs           = torch.softmax(outputs, dim=1)
     ordinal_penalty = (distances * probs).sum(dim=1).mean()
 
     return ce_loss + ordinal_penalty
 
 
-def mobileNet_data_modeling(
+def _model_sparsity(model):
+    """Return fraction of zero weights across all Conv2d and Linear layers."""
+    total = 0
+    zeros = 0
+    for module in model.modules():
+        if isinstance(module, (nn.Conv2d, nn.Linear)):
+            total += module.weight.nelement()
+            zeros += (module.weight == 0).sum().item()
+    return zeros / total if total > 0 else 0.0
+
+
+def pruning(
         processed_dir,
-        num_classes,
-        epochs,
-        batch_size,
-        learning_rate,
-        img_size,
+        num_classes=5,
+        epochs=10,
+        batch_size=32,
+        learning_rate=1e-5,
+        img_size=224,
+        pruning_amount=0.3,
 ):
+    """
+    Loads the distilled student model (MobileNetV3 Small), applies global
+    L1 unstructured pruning, then fine-tunes to recover accuracy.
+
+    pruning_amount : fraction of weights to prune across all Conv2d + Linear
+                     layers (0.3 = remove the 30% of weights closest to zero)
+    learning_rate  : keep this low (1e-5) — fine-tuning after pruning,
+                     not training from scratch
+    """
 
     train_dir   = os.path.join(processed_dir, "train")
     reports_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reports")
@@ -52,7 +71,6 @@ def mobileNet_data_modeling(
     # Dataset
     # -----------------------------------------
 
-    # Augmented transform for training — increases effective dataset size
     train_transform = transforms.Compose([
         transforms.Resize((img_size, img_size)),
         transforms.RandomRotation(15),
@@ -68,7 +86,6 @@ def mobileNet_data_modeling(
         )
     ])
 
-    # Clean transform for test — no augmentation
     eval_transform = transforms.Compose([
         transforms.Resize((img_size, img_size)),
         transforms.ToTensor(),
@@ -114,32 +131,52 @@ def mobileNet_data_modeling(
     )
 
     # -----------------------------------------
-    # Model: MobileNetV3 Small (baseline)
+    # Load distilled student model
     # -----------------------------------------
 
-    model = mobilenet_v3_large(weights="DEFAULT")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+    student_path = os.path.join(processed_dir, "student_distilled.pth")
+
+    model = mobilenet_v3_small(weights=None)
     model.classifier[-1] = nn.Linear(
         model.classifier[-1].in_features,
         num_classes
     )
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+    model.load_state_dict(torch.load(student_path, map_location=device))
     model = model.to(device)
 
     # -----------------------------------------
-    # Loss & Optimizer
+    # Apply global L1 unstructured pruning
     # -----------------------------------------
 
-    # Ordinal loss: penalizes severity misclassification by distance
-    # e.g. predicting 4 for true 0 costs 5x more than predicting 1
+    sparsity_before = _model_sparsity(model)
+
+    # Collect all Conv2d and Linear weight tensors
+    parameters_to_prune = [
+        (module, "weight")
+        for module in model.modules()
+        if isinstance(module, (nn.Conv2d, nn.Linear))
+    ]
+
+    # Remove the lowest-magnitude pruning_amount fraction of weights globally
+    prune.global_unstructured(
+        parameters_to_prune,
+        pruning_method=prune.L1Unstructured,
+        amount=pruning_amount,
+    )
+
+    sparsity_after = _model_sparsity(model)
+
+    # -----------------------------------------
+    # Optimizer (low LR — fine-tuning, not retraining)
+    # -----------------------------------------
+
     criterion = ordinal_severity_loss
 
     optimizer = torch.optim.Adam(
         model.parameters(),
-        lr=learning_rate,
-        weight_decay=1e-3
+        lr=learning_rate
     )
 
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
@@ -148,19 +185,22 @@ def mobileNet_data_modeling(
     )
 
     # -----------------------------------------
-    # Training
+    # Fine-tuning
     # -----------------------------------------
 
     print("=" * 60)
-    print("TRAINING: MobileNetV3 Large Baseline")
+    print("PRUNING + FINE-TUNING: MobileNetV3 Small Student")
     print("=" * 60)
-    print(f"\nDevice        : {device}")
-    print(f"Train Samples : {len(train_dataset)}")
-    print(f"Val Samples   : {len(val_dataset)}")
-    print(f"Classes       : {train_dataset.classes}")
-    print(f"Epochs        : {epochs}")
-    print(f"Batch Size    : {batch_size}")
-    print(f"Learning Rate : {learning_rate}")
+    print(f"\nDevice              : {device}")
+    print(f"Train Samples       : {len(train_dataset)}")
+    print(f"Val Samples         : {len(val_dataset)}")
+    print(f"Classes             : {train_dataset.classes}")
+    print(f"Epochs              : {epochs}")
+    print(f"Batch Size          : {batch_size}")
+    print(f"Learning Rate       : {learning_rate}")
+    print(f"Pruning Amount      : {pruning_amount:.0%}")
+    print(f"Sparsity Before     : {sparsity_before:.4f}")
+    print(f"Sparsity After      : {sparsity_after:.4f}")
     print()
 
     log_records      = []
@@ -174,8 +214,8 @@ def mobileNet_data_modeling(
         model.train()
 
         running_loss = 0.0
-        correct = 0
-        total = 0
+        correct      = 0
+        total        = 0
 
         for images, labels in train_loader:
 
@@ -260,27 +300,33 @@ def mobileNet_data_modeling(
                 break
 
     # -----------------------------------------
-    # Save model & training report
+    # Make pruning permanent, save model
     # -----------------------------------------
 
-    model_path = os.path.join(processed_dir, "mobilenetv3_baseline.pth")
-
-    # Restore best weights (lowest val loss) before saving and testing
+    # Restore best weights before making pruning permanent
     if best_model_state is not None:
         model.load_state_dict({k: v.to(device) for k, v in best_model_state.items()})
+
+    # Remove pruning masks — bake zeroed weights into the actual parameters
+    for module, param_name in parameters_to_prune:
+        prune.remove(module, param_name)
+
+    final_sparsity = _model_sparsity(model)
+
+    model_path = os.path.join(processed_dir, "student_pruned.pth")
 
     torch.save(model.state_dict(), model_path)
 
     report_df = pd.DataFrame(log_records)
-
-    report_df.to_csv(os.path.join(reports_dir, "mobilenetv3_modeling_report.csv"), index=False)
+    report_df.to_csv(os.path.join(reports_dir, "pruning_modeling_report.csv"), index=False)
 
     print()
     print("=" * 60)
-    print("TRAINING COMPLETE")
+    print("PRUNING COMPLETE")
     print("=" * 60)
-    print(f"\nModel Saved   : {model_path}")
-    print(f"Report Saved  : {os.path.join(reports_dir, 'mobilenetv3_modeling_report.csv')}")
+    print(f"\nFinal Sparsity  : {final_sparsity:.4f}")
+    print(f"Model Saved     : {model_path}")
+    print(f"Report Saved    : {os.path.join(reports_dir, 'pruning_modeling_report.csv')}")
 
     # -----------------------------------------
     # Test Evaluation
@@ -305,7 +351,6 @@ def mobileNet_data_modeling(
     test_correct = 0
     test_total   = 0
 
-    # Per-class correct/total for per-class accuracy
     class_correct = [0] * num_classes
     class_total   = [0] * num_classes
 
@@ -316,8 +361,8 @@ def mobileNet_data_modeling(
             images = images.to(device)
             labels = labels.to(device)
 
-            outputs   = model(images)
-            loss      = criterion(outputs, labels, num_classes)
+            outputs = model(images)
+            loss    = criterion(outputs, labels, num_classes)
 
             test_loss += loss.item() * images.size(0)
 
@@ -348,8 +393,10 @@ def mobileNet_data_modeling(
             print(f"  Severity {i}  : {cls_acc:.4f}  ({class_correct[i]}/{class_total[i]})")
 
     test_report_df = pd.DataFrame([{
-        "test_loss"    : round(test_loss_avg, 4),
-        "test_accuracy": round(test_acc, 4),
+        "pruning_amount": pruning_amount,
+        "final_sparsity": round(final_sparsity, 4),
+        "test_loss"     : round(test_loss_avg, 4),
+        "test_accuracy" : round(test_acc, 4),
         **{
             f"severity_{i}_accuracy": round(
                 class_correct[i] / class_total[i], 4
@@ -358,9 +405,9 @@ def mobileNet_data_modeling(
         }
     }])
 
-    test_report_df.to_csv(os.path.join(reports_dir, "mobilenetv3_test_report.csv"), index=False)
+    test_report_df.to_csv(os.path.join(reports_dir, "pruning_test_report.csv"), index=False)
 
     print()
-    print(f"Test Report   : {os.path.join(reports_dir, 'mobilenetv3_test_report.csv')}")
+    print(f"Test Report   : {os.path.join(reports_dir, 'pruning_test_report.csv')}")
 
     return report_df, test_report_df

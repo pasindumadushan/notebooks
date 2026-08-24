@@ -1,10 +1,11 @@
 import os
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import pandas as pd
 from torch.utils.data import DataLoader, WeightedRandomSampler
 from torchvision.datasets import ImageFolder
-from torchvision.models import mobilenet_v3_large
+from torchvision.models import mobilenet_v3_small, mobilenet_v3_large, efficientnet_b0
 import torchvision.transforms as transforms
 
 
@@ -16,10 +17,8 @@ def ordinal_severity_loss(outputs, labels, num_classes=5):
         far from the true severity level
     """
 
-    # Primary signal — drives correct class prediction
-    ce_loss = torch.nn.functional.cross_entropy(outputs, labels)
+    ce_loss  = torch.nn.functional.cross_entropy(outputs, labels)
 
-    # Ordinal penalty — penalizes far-away probability mass
     severity = torch.arange(
         num_classes,
         dtype=torch.float32,
@@ -27,22 +26,88 @@ def ordinal_severity_loss(outputs, labels, num_classes=5):
     )
 
     labels_f        = labels.float().unsqueeze(1)
-    distances       = (severity - labels_f).abs()     # shape (batch, num_classes)
-
+    distances       = (severity - labels_f).abs()
     probs           = torch.softmax(outputs, dim=1)
     ordinal_penalty = (distances * probs).sum(dim=1).mean()
 
     return ce_loss + ordinal_penalty
 
 
-def mobileNet_data_modeling(
+def distillation_loss(student_logits, teacher_logits, labels, num_classes, temperature, alpha):
+    """
+    KD loss = alpha  * soft_loss  (KL divergence against teacher soft targets)
+            + (1-alpha) * hard_loss (ordinal loss against true labels)
+
+    Temperature softens both distributions so the student learns from
+    the teacher's confidence pattern, not just the argmax.
+    T² rescales the KL term back to the same magnitude as the hard loss.
+    """
+
+    # Soft targets: temperature-scaled distributions
+    student_soft = F.log_softmax(student_logits / temperature, dim=1)
+    teacher_soft = F.softmax(teacher_logits  / temperature, dim=1)
+
+    soft_loss = F.kl_div(
+        student_soft,
+        teacher_soft,
+        reduction="batchmean"
+    ) * (temperature ** 2)
+
+    # Hard targets: ordinal-aware loss against ground truth
+    hard_loss = ordinal_severity_loss(student_logits, labels, num_classes)
+
+    return alpha * soft_loss + (1.0 - alpha) * hard_loss
+
+
+def _load_teacher(processed_dir, num_classes, device):
+    """Load both teacher models and return them in eval mode."""
+
+    mobilenet_path    = os.path.join(processed_dir, "mobilenetv3_baseline.pth")
+    efficientnet_path = os.path.join(processed_dir, "efficientnet_lite_baseline.pth")
+
+    teacher_mobile = mobilenet_v3_large(weights=None)
+    teacher_mobile.classifier[-1] = nn.Linear(
+        teacher_mobile.classifier[-1].in_features,
+        num_classes
+    )
+    teacher_mobile.load_state_dict(
+        torch.load(mobilenet_path, map_location=device)
+    )
+    teacher_mobile.to(device).eval()
+
+    teacher_eff = efficientnet_b0(weights=None)
+    teacher_eff.classifier[-1] = nn.Linear(
+        teacher_eff.classifier[-1].in_features,
+        num_classes
+    )
+    teacher_eff.load_state_dict(
+        torch.load(efficientnet_path, map_location=device)
+    )
+    teacher_eff.to(device).eval()
+
+    return teacher_mobile, teacher_eff
+
+
+def knowledge_distillation(
         processed_dir,
-        num_classes,
-        epochs,
-        batch_size,
-        learning_rate,
-        img_size,
+        num_classes=5,
+        epochs=20,
+        batch_size=32,
+        learning_rate=1e-4,
+        img_size=224,
+        temperature=4.0,
+        alpha=0.7,
+        mobilenet_weight=0.5,
+        efficientnet_weight=0.5,
 ):
+    """
+    Trains a MobileNetV3 Small student model by distilling knowledge
+    from the MobileNetV3 Large + EfficientNet-B0 teacher ensemble.
+
+    temperature    : softens probability distributions (higher = softer)
+    alpha          : weight for soft KL loss; (1-alpha) for hard ordinal loss
+    mobilenet_weight / efficientnet_weight : ensemble teacher weights (should sum to 1.0)
+    """
 
     train_dir   = os.path.join(processed_dir, "train")
     reports_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reports")
@@ -52,7 +117,6 @@ def mobileNet_data_modeling(
     # Dataset
     # -----------------------------------------
 
-    # Augmented transform for training — increases effective dataset size
     train_transform = transforms.Compose([
         transforms.Resize((img_size, img_size)),
         transforms.RandomRotation(15),
@@ -68,7 +132,6 @@ def mobileNet_data_modeling(
         )
     ])
 
-    # Clean transform for test — no augmentation
     eval_transform = transforms.Compose([
         transforms.Resize((img_size, img_size)),
         transforms.ToTensor(),
@@ -114,32 +177,31 @@ def mobileNet_data_modeling(
     )
 
     # -----------------------------------------
-    # Model: MobileNetV3 Small (baseline)
+    # Teacher ensemble (frozen)
     # -----------------------------------------
-
-    model = mobilenet_v3_large(weights="DEFAULT")
-
-    model.classifier[-1] = nn.Linear(
-        model.classifier[-1].in_features,
-        num_classes
-    )
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    model = model.to(device)
+    teacher_mobile, teacher_eff = _load_teacher(processed_dir, num_classes, device)
 
     # -----------------------------------------
-    # Loss & Optimizer
+    # Student: MobileNetV3 Small
     # -----------------------------------------
 
-    # Ordinal loss: penalizes severity misclassification by distance
-    # e.g. predicting 4 for true 0 costs 5x more than predicting 1
-    criterion = ordinal_severity_loss
+    student = mobilenet_v3_small(weights="DEFAULT")
+    student.classifier[-1] = nn.Linear(
+        student.classifier[-1].in_features,
+        num_classes
+    )
+    student = student.to(device)
+
+    # -----------------------------------------
+    # Optimizer
+    # -----------------------------------------
 
     optimizer = torch.optim.Adam(
-        model.parameters(),
-        lr=learning_rate,
-        weight_decay=1e-3
+        student.parameters(),
+        lr=learning_rate
     )
 
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
@@ -152,15 +214,18 @@ def mobileNet_data_modeling(
     # -----------------------------------------
 
     print("=" * 60)
-    print("TRAINING: MobileNetV3 Large Baseline")
+    print("KNOWLEDGE DISTILLATION: MobileNetV3 Small Student")
     print("=" * 60)
-    print(f"\nDevice        : {device}")
-    print(f"Train Samples : {len(train_dataset)}")
-    print(f"Val Samples   : {len(val_dataset)}")
-    print(f"Classes       : {train_dataset.classes}")
-    print(f"Epochs        : {epochs}")
-    print(f"Batch Size    : {batch_size}")
-    print(f"Learning Rate : {learning_rate}")
+    print(f"\nDevice              : {device}")
+    print(f"Train Samples       : {len(train_dataset)}")
+    print(f"Val Samples         : {len(val_dataset)}")
+    print(f"Classes             : {train_dataset.classes}")
+    print(f"Epochs              : {epochs}")
+    print(f"Batch Size          : {batch_size}")
+    print(f"Learning Rate       : {learning_rate}")
+    print(f"Temperature         : {temperature}")
+    print(f"Alpha (soft/hard)   : {alpha} / {round(1.0 - alpha, 2)}")
+    print(f"Teacher weights     : MobileNet={mobilenet_weight}  EfficientNet={efficientnet_weight}")
     print()
 
     log_records      = []
@@ -171,11 +236,11 @@ def mobileNet_data_modeling(
 
     for epoch in range(1, epochs + 1):
 
-        model.train()
+        student.train()
 
         running_loss = 0.0
-        correct = 0
-        total = 0
+        correct      = 0
+        total        = 0
 
         for images, labels in train_loader:
 
@@ -184,9 +249,23 @@ def mobileNet_data_modeling(
 
             optimizer.zero_grad()
 
-            outputs = model(images)
+            student_logits = student(images)
 
-            loss = criterion(outputs, labels, num_classes)
+            # Teacher ensemble logits (weighted average, no grad)
+            with torch.no_grad():
+                teacher_logits = (
+                    mobilenet_weight    * teacher_mobile(images) +
+                    efficientnet_weight * teacher_eff(images)
+                )
+
+            loss = distillation_loss(
+                student_logits,
+                teacher_logits,
+                labels,
+                num_classes,
+                temperature,
+                alpha
+            )
 
             loss.backward()
 
@@ -194,7 +273,7 @@ def mobileNet_data_modeling(
 
             running_loss += loss.item() * images.size(0)
 
-            _, predicted = torch.max(outputs, 1)
+            _, predicted = torch.max(student_logits, 1)
 
             correct += (predicted == labels).sum().item()
 
@@ -207,7 +286,7 @@ def mobileNet_data_modeling(
         # Validation
         # -----------------------------------------
 
-        model.eval()
+        student.eval()
 
         val_loss    = 0.0
         val_correct = 0
@@ -217,10 +296,24 @@ def mobileNet_data_modeling(
             for images, labels in val_loader:
                 images  = images.to(device)
                 labels  = labels.to(device)
-                outputs = model(images)
-                loss    = criterion(outputs, labels, num_classes)
+
+                student_logits = student(images)
+                teacher_logits = (
+                    mobilenet_weight    * teacher_mobile(images) +
+                    efficientnet_weight * teacher_eff(images)
+                )
+
+                loss = distillation_loss(
+                    student_logits,
+                    teacher_logits,
+                    labels,
+                    num_classes,
+                    temperature,
+                    alpha
+                )
+
                 val_loss    += loss.item() * images.size(0)
-                _, predicted = torch.max(outputs, 1)
+                _, predicted = torch.max(student_logits, 1)
                 val_correct += (predicted == labels).sum().item()
                 val_total   += labels.size(0)
 
@@ -251,7 +344,7 @@ def mobileNet_data_modeling(
         # Save best model; stop early if val loss stops improving
         if val_loss_avg < best_val_loss:
             best_val_loss    = val_loss_avg
-            best_model_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
+            best_model_state = {k: v.cpu().clone() for k, v in student.state_dict().items()}
             patience_counter = 0
         else:
             patience_counter += 1
@@ -260,27 +353,26 @@ def mobileNet_data_modeling(
                 break
 
     # -----------------------------------------
-    # Save model & training report
+    # Save student model & training report
     # -----------------------------------------
 
-    model_path = os.path.join(processed_dir, "mobilenetv3_baseline.pth")
+    model_path = os.path.join(processed_dir, "student_distilled.pth")
 
     # Restore best weights (lowest val loss) before saving and testing
     if best_model_state is not None:
-        model.load_state_dict({k: v.to(device) for k, v in best_model_state.items()})
+        student.load_state_dict({k: v.to(device) for k, v in best_model_state.items()})
 
-    torch.save(model.state_dict(), model_path)
+    torch.save(student.state_dict(), model_path)
 
     report_df = pd.DataFrame(log_records)
-
-    report_df.to_csv(os.path.join(reports_dir, "mobilenetv3_modeling_report.csv"), index=False)
+    report_df.to_csv(os.path.join(reports_dir, "distillation_modeling_report.csv"), index=False)
 
     print()
     print("=" * 60)
-    print("TRAINING COMPLETE")
+    print("DISTILLATION COMPLETE")
     print("=" * 60)
-    print(f"\nModel Saved   : {model_path}")
-    print(f"Report Saved  : {os.path.join(reports_dir, 'mobilenetv3_modeling_report.csv')}")
+    print(f"\nStudent Saved : {model_path}")
+    print(f"Report Saved  : {os.path.join(reports_dir, 'distillation_modeling_report.csv')}")
 
     # -----------------------------------------
     # Test Evaluation
@@ -299,13 +391,12 @@ def mobileNet_data_modeling(
         shuffle=False
     )
 
-    model.eval()
+    student.eval()
 
     test_loss    = 0.0
     test_correct = 0
     test_total   = 0
 
-    # Per-class correct/total for per-class accuracy
     class_correct = [0] * num_classes
     class_total   = [0] * num_classes
 
@@ -316,8 +407,8 @@ def mobileNet_data_modeling(
             images = images.to(device)
             labels = labels.to(device)
 
-            outputs   = model(images)
-            loss      = criterion(outputs, labels, num_classes)
+            outputs = student(images)
+            loss    = ordinal_severity_loss(outputs, labels, num_classes)
 
             test_loss += loss.item() * images.size(0)
 
@@ -358,9 +449,9 @@ def mobileNet_data_modeling(
         }
     }])
 
-    test_report_df.to_csv(os.path.join(reports_dir, "mobilenetv3_test_report.csv"), index=False)
+    test_report_df.to_csv(os.path.join(reports_dir, "distillation_test_report.csv"), index=False)
 
     print()
-    print(f"Test Report   : {os.path.join(reports_dir, 'mobilenetv3_test_report.csv')}")
+    print(f"Test Report   : {os.path.join(reports_dir, 'distillation_test_report.csv')}")
 
     return report_df, test_report_df

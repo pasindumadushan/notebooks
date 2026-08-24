@@ -322,8 +322,11 @@ def preprocess_dataset(
         log_records
     )
 
+    reports_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reports")
+    os.makedirs(reports_dir, exist_ok=True)
+
     report_df.to_csv(
-        "preprocessing_report.csv",
+        os.path.join(reports_dir, "preprocessing_report.csv"),
         index=False
     )
 
@@ -332,6 +335,6 @@ def preprocess_dataset(
     print("=" * 60)
     print(f"\nProcessed Images : {processed_count}")
     print(f"Skipped Images   : {skipped_count}")
-    print("Report Saved     : preprocessing_report.csv")
+    print(f"Report Saved     : {os.path.join(reports_dir, 'preprocessing_report.csv')}")
 
     return report_df
