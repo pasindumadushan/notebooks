@@ -7,12 +7,14 @@ from ensemble_predict import ensemble_evaluate
 from knowledge_distillation import knowledge_distillation
 from pruning import pruning
 from quantization import quantization
+from predict_severity import predict_severity
 
 reports_dir   = r"C:\Private\Private proj\DiabeticRetinopathy\notebooks\reports"
 csv_path      = os.path.join(reports_dir, "dataset_analysis.csv")
 os.makedirs(reports_dir, exist_ok=True)
-raw_dir = r"C:\Private\Private proj\DiabeticRetinopathy\raw 200 from each sev"
+raw_dir = r"C:\Private\Private proj\DiabeticRetinopathy\raw 20 from each sev"
 processed_dir  = r"C:\Private\Private proj\DiabeticRetinopathy\processed"
+prediction_dir = r"C:\Private\Private proj\DiabeticRetinopathy\notebooks\prediction images"
 
 # analyze_dataset (    
 #     output_csv=csv_path,
@@ -31,32 +33,32 @@ processed_dir  = r"C:\Private\Private proj\DiabeticRetinopathy\processed"
 #     blur_threshold=5,
 # )
 
-mobileNet_data_modeling(
-    processed_dir=processed_dir,
-    num_classes=5,
-    epochs=20,
-    batch_size=32,
-    learning_rate=1e-4,
-    img_size=224,
-)
+# mobileNet_data_modeling(
+#     processed_dir=processed_dir,
+#     num_classes=5,
+#     epochs=20,
+#     batch_size=32,
+#     learning_rate=1e-4,
+#     img_size=224,
+# )
 
-efficientnet_lite_data_modeling(
-    processed_dir=processed_dir,
-    num_classes=5,
-    epochs=20,
-    batch_size=32,
-    learning_rate=1e-4,
-    img_size=224,
-)
+# efficientnet_lite_data_modeling(
+#     processed_dir=processed_dir,
+#     num_classes=5,
+#     epochs=20,
+#     batch_size=32,
+#     learning_rate=1e-4,
+#     img_size=224,
+# )
 
-ensemble_evaluate(
-    processed_dir=processed_dir,
-    num_classes=5,
-    batch_size=32,
-    img_size=224,
-    mobilenet_weight=0.5,
-    efficientnet_weight=0.7,
-)
+# ensemble_evaluate(
+#     processed_dir=processed_dir,
+#     num_classes=5,
+#     batch_size=32,
+#     img_size=224,
+#     mobilenet_weight=0.5,
+#     efficientnet_weight=0.7,
+# )
 
 # knowledge_distillation(
 #     processed_dir=processed_dir,
@@ -87,3 +89,11 @@ ensemble_evaluate(
 #     batch_size=32,
 #     img_size=224,
 # )
+
+predict_severity(
+	processed_dir=processed_dir,
+	prediction_dir=prediction_dir,
+	num_classes=5,
+	img_size=224,
+	max_images=4,
+)
