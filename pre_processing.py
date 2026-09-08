@@ -19,11 +19,102 @@ def generate_processed_path(
         relative_path
     )
 
+
+def create_split_directories(processed_dir, class_labels=None):
+    """Create processed/train, processed/val, processed/test and class folders 0..4."""
+    if class_labels is None:
+        class_labels = [str(i) for i in range(5)]
+
+    os.makedirs(processed_dir, exist_ok=True)
+
+    for split_name in ["train", "val", "test"]:
+        split_dir = os.path.join(processed_dir, split_name)
+        os.makedirs(split_dir, exist_ok=True)
+
+        for class_name in class_labels:
+            os.makedirs(
+                os.path.join(split_dir, str(class_name)),
+                exist_ok=True
+            )
+
+
+def get_source_split_name(image_path, raw_dir):
+    """Return the original raw split folder name when the dataset is already organized by train/val/test."""
+    try:
+        relative_path = os.path.relpath(image_path, raw_dir)
+        first_part = relative_path.split(os.sep)[0]
+        if first_part.lower() in {"train", "val", "test"}:
+            return first_part.lower()
+    except Exception:
+        pass
+    return "train"
+
+
 def flip_image(image):
     """
     Horizontally flip image.
     """
     return cv2.flip(image, 1)
+
+
+def create_fundus_mask(image_bgr):
+    """Create a circular mask for the retinal fundus area."""
+    gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
+
+    _, thresh = cv2.threshold(gray, 10, 255, cv2.THRESH_BINARY)
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    if not contours:
+        return None
+
+    largest = max(contours, key=cv2.contourArea)
+    if cv2.contourArea(largest) < 100:
+        return None
+
+    (x, y), radius = cv2.minEnclosingCircle(largest)
+    radius = max(int(radius * 0.9), 1)
+
+    mask = np.zeros_like(gray, dtype=np.uint8)
+    cv2.circle(mask, (int(x), int(y)), radius, 255, -1)
+    return mask
+
+
+def crop_fundus_roi(image_bgr):
+    """Remove black borders and non-retina background while keeping a black outside area."""
+    mask = create_fundus_mask(image_bgr)
+    if mask is None:
+        return image_bgr
+
+    y_indices, x_indices = np.where(mask > 0)
+    if len(x_indices) == 0 or len(y_indices) == 0:
+        return image_bgr
+
+    x_min, x_max = int(x_indices.min()), int(x_indices.max())
+    y_min, y_max = int(y_indices.min()), int(y_indices.max())
+
+    pad_x = max(10, int((x_max - x_min) * 0.08))
+    pad_y = max(10, int((y_max - y_min) * 0.08))
+
+    x_min = max(0, x_min - pad_x)
+    x_max = min(image_bgr.shape[1], x_max + pad_x)
+    y_min = max(0, y_min - pad_y)
+    y_max = min(image_bgr.shape[0], y_max + pad_y)
+
+    cropped = np.zeros_like(image_bgr)
+    cropped[y_min:y_max, x_min:x_max] = image_bgr[y_min:y_max, x_min:x_max]
+
+    center_x = int((x_min + x_max) / 2)
+    center_y = int((y_min + y_max) / 2)
+    radius = max((x_max - x_min), (y_max - y_min)) // 2
+
+    circular = np.zeros_like(mask, dtype=np.uint8)
+    cv2.circle(circular, (center_x, center_y), radius, 255, -1)
+    circular = cv2.bitwise_and(circular, mask)
+
+    result = np.zeros_like(image_bgr)
+    result[circular > 0] = cropped[circular > 0]
+    return result
+
 
 def resize_image(
         image,
@@ -39,79 +130,24 @@ def resize_image(
         interpolation=cv2.INTER_AREA
     )
 
-def correct_illumination(image):
+def ben_graham_enhancement(image):
     """
-    Correct uneven illumination using Gaussian background division
-    (retinex-inspired), shade correction, and adaptive illumination
-    normalization on the L channel of LAB color space.
-    Only the circular fundus region is corrected; the black background
-    is masked out and preserved as black throughout.
+    Ben Graham style retinal enhancement.
+    This emphasizes lesion-like structures by subtracting a blurred background
+    and boosting local contrast while preserving the black background.
     """
+    if image is None:
+        return None
 
-    # Mask the circular fundus region - exclude black background
+    image = crop_fundus_roi(image)
+
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    blur = cv2.GaussianBlur(gray, (0, 0), sigmaX=gray.shape[1] / 30)
+    enhanced = cv2.addWeighted(gray, 4, blur, -4, 128)
+    enhanced = cv2.convertScaleAbs(enhanced)
 
-    _, mask = cv2.threshold(gray, 10, 255, cv2.THRESH_BINARY)
-
-    lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
-
-    l_channel, a_channel, b_channel = cv2.split(lab)
-
-    # Estimate background illumination via large Gaussian blur
-    background = cv2.GaussianBlur(
-        l_channel,
-        (101, 101),
-        sigmaX=0
-    ).astype(np.float32)
-
-    l_float = l_channel.astype(np.float32)
-
-    # Mean brightness computed only within fundus region (excludes black border)
-    mean_brightness = np.mean(l_float[mask > 0])
-
-    # Division-based normalization - preserves local contrast
-    l_corrected = (l_float / (background + 1e-6)) * mean_brightness
-
-    l_corrected = np.clip(l_corrected, 0, 255).astype(np.uint8)
-
-    # Adaptive illumination normalization
-    l_normalized = cv2.normalize(
-        l_corrected,
-        None,
-        0,
-        255,
-        cv2.NORM_MINMAX
-    )
-
-    # Apply correction only within fundus region; force background to black
-    l_result = np.zeros_like(l_channel)
-
-    l_result[mask > 0] = l_normalized[mask > 0]
-
-    lab = cv2.merge((l_result, a_channel, b_channel))
-
-    return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
-
-
-def enhance_contrast(image):
-    """
-    Enhance contrast using CLAHE on the L channel of LAB color space.
-    """
-
-    lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
-
-    l_channel, a_channel, b_channel = cv2.split(lab)
-
-    clahe = cv2.createCLAHE(
-        clipLimit=2.0,
-        tileGridSize=(8, 8)
-    )
-
-    l_channel = clahe.apply(l_channel)
-
-    lab = cv2.merge((l_channel, a_channel, b_channel))
-
-    return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+    enhanced = cv2.cvtColor(enhanced, cv2.COLOR_GRAY2BGR)
+    return enhanced
 
 
 def normalize_image(image):
@@ -149,13 +185,10 @@ def save_image(
 
 def process_image(
         image_path,
-        output_path,        
+        output_path,
         target_size,
-        blur_threshold,
         bright_region_quadrant,
         needs_resize,
-        needs_illumination_correction,
-        needs_contrast_enhancement,
         needs_normalization,
 ):
     """
@@ -176,6 +209,12 @@ def process_image(
         image = flip_image(image)
 
     # -----------------------------------------
+    # Ben Graham style enhancement for retinal lesions
+    # -----------------------------------------
+
+    image = ben_graham_enhancement(image)
+
+    # -----------------------------------------
     # Resize
     # -----------------------------------------
 
@@ -185,22 +224,6 @@ def process_image(
             image,
             target_size=target_size
         )
-
-    # -----------------------------------------
-    # Illumination Correction
-    # -----------------------------------------
-
-    if needs_illumination_correction:
-
-        image = correct_illumination(image)
-
-    # -----------------------------------------
-    # Contrast Enhancement
-    # -----------------------------------------
-
-    if needs_contrast_enhancement:
-
-        image = enhance_contrast(image)
 
     # -----------------------------------------
     # Normalize
@@ -232,20 +255,18 @@ def preprocess_dataset(
         raw_dir,
         processed_dir,
         target_size,
-        blur_threshold
 ):
 
     # -----------------------------------------
-    # Clear processed directory before starting
+    # Reset processed tree and create required split folders
     # -----------------------------------------
 
     if os.path.exists(processed_dir):
-
         import shutil
-
         shutil.rmtree(processed_dir)
 
-    os.makedirs(processed_dir)
+    class_labels = [str(i) for i in range(5)]
+    create_split_directories(processed_dir, class_labels=class_labels)
 
     df = pd.read_csv(input_csv)
 
@@ -254,37 +275,36 @@ def preprocess_dataset(
     processed_count = 0
     skipped_count = 0
 
-    for _, row in df.iterrows():
+    for idx, row in df.iterrows():
 
         image_path = row["file_path"]
+        class_name = str(row.get("class_label", os.path.basename(os.path.dirname(image_path))))
+        split_name = get_source_split_name(image_path, raw_dir)
 
-        # Skip blurry images
+        # Skip blurry images already identified during dataset analysis
         if row["is_blurry"]:
-
             skipped_count += 1
-
             log_records.append({
                 "file_path": image_path,
-                "status": "SKIPPED_BLURRY"
+                "status": "SKIPPED_BLURRY",
+                "split": "skipped",
+                "class_label": class_name,
             })
-
             continue
 
-        output_path = generate_processed_path(
-            image_path,
-            raw_dir,
-            processed_dir
+        output_path = os.path.join(
+            processed_dir,
+            split_name,
+            class_name,
+            os.path.basename(image_path)
         )
 
         status = process_image(
             image_path=image_path,
             output_path=output_path,
             target_size=target_size,
-            blur_threshold=blur_threshold,
             bright_region_quadrant=row["bright_region_quadrant"],
             needs_resize=row["needs_resize"],
-            needs_illumination_correction=row["needs_illumination_correction"],
-            needs_contrast_enhancement=row["needs_contrast_enhancement"],
             needs_normalization=row["needs_normalization"]
         )
 
@@ -300,6 +320,12 @@ def preprocess_dataset(
 
             "status":
                 status,
+
+            "split":
+                split_name,
+
+            "class_label":
+                class_name,
 
             "flipped":
                 row["bright_region_quadrant"]

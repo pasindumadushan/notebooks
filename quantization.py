@@ -33,9 +33,9 @@ def quantization(
         processed_dir,
         num_classes=5,
         batch_size=32,
-        img_size=224,
         num_calibration_batches=50,
 ):
+    img_size = 224
     """
     Applies Post-Training Dynamic Quantization to the pruned student model.
 

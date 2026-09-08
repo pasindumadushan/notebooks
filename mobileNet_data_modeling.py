@@ -41,8 +41,8 @@ def mobileNet_data_modeling(
         epochs,
         batch_size,
         learning_rate,
-        img_size,
 ):
+    img_size = 224
 
     train_dir   = os.path.join(processed_dir, "train")
     reports_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reports")
@@ -166,8 +166,6 @@ def mobileNet_data_modeling(
     log_records      = []
     best_val_loss    = float("inf")
     best_model_state = None
-    patience         = 5
-    patience_counter = 0
 
     for epoch in range(1, epochs + 1):
 
@@ -248,16 +246,10 @@ def mobileNet_data_modeling(
             f"  LR: {current_lr:.2e}"
         )
 
-        # Save best model; stop early if val loss stops improving
+        # Save best model checkpoint when validation loss improves
         if val_loss_avg < best_val_loss:
-            best_val_loss    = val_loss_avg
+            best_val_loss = val_loss_avg
             best_model_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
-            patience_counter = 0
-        else:
-            patience_counter += 1
-            if patience_counter >= patience:
-                print(f"\nEarly stopping at epoch {epoch} (no val improvement for {patience} epochs)")
-                break
 
     # -----------------------------------------
     # Save model & training report

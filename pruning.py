@@ -206,8 +206,6 @@ def pruning(
     log_records      = []
     best_val_loss    = float("inf")
     best_model_state = None
-    patience         = 5
-    patience_counter = 0
 
     for epoch in range(1, epochs + 1):
 
@@ -288,16 +286,10 @@ def pruning(
             f"  LR: {current_lr:.2e}"
         )
 
-        # Save best model; stop early if val loss stops improving
+        # Save best model checkpoint when validation loss improves
         if val_loss_avg < best_val_loss:
-            best_val_loss    = val_loss_avg
+            best_val_loss = val_loss_avg
             best_model_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
-            patience_counter = 0
-        else:
-            patience_counter += 1
-            if patience_counter >= patience:
-                print(f"\nEarly stopping at epoch {epoch} (no val improvement for {patience} epochs)")
-                break
 
     # -----------------------------------------
     # Make pruning permanent, save model
