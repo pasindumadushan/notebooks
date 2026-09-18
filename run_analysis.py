@@ -11,25 +11,25 @@ from quantization import quantization
 reports_dir   = r"C:\Private\Private proj\DiabeticRetinopathy\notebooks\reports"
 csv_path      = os.path.join(reports_dir, "dataset_analysis.csv")
 os.makedirs(reports_dir, exist_ok=True)
-raw_dir = r"C:\Private\Private proj\DiabeticRetinopathy\raw 10 from each sev"
+raw_dir = r"C:\Private\Private proj\DiabeticRetinopathy\raw 1000 from each sev"
 processed_dir  = r"C:\Private\Private proj\DiabeticRetinopathy\processed"
 prediction_dir = r"C:\Private\Private proj\DiabeticRetinopathy\notebooks\prediction images"
 
-# analyze_dataset (    
-#     output_csv=csv_path,
-#     raw_dir=raw_dir,
-#     target_size=(224, 224),
-#     blur_threshold=5,
-#     contrast_threshold=40.0,
-#     illumination_threshold=15.0,
-# )
+analyze_dataset (    
+    output_csv=csv_path,
+    raw_dir=raw_dir,
+    target_size=(224, 224),
+    blur_threshold=5,
+    contrast_threshold=40.0,
+    illumination_threshold=15.0,
+)
 
-# preprocess_dataset(
-#     input_csv = csv_path,
-#     raw_dir=raw_dir,
-#     processed_dir=processed_dir,
-#     target_size=(224, 224)
-# )
+preprocess_dataset(
+    input_csv = csv_path,
+    raw_dir=raw_dir,
+    processed_dir=processed_dir,
+    target_size=(224, 224)
+)
 
 mobileNet_data_modeling(
     processed_dir=processed_dir,
